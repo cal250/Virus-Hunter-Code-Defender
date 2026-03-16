@@ -31,6 +31,22 @@ class HUD:
             scan_text = self.font.render(f"SCANNING SYSTEM... {scan_progress}%", True, self.glow_color)
             screen.blit(scan_text, (self.screen_width // 2 - 80, self.screen_height - 80))
 
+    def draw_pointer(self, screen, player_pos, target_pos):
+        # Draw a small arrow pointing towards the current objective
+        direction = pygame.Vector2(target_pos) - pygame.Vector2(player_pos)
+        if direction.length() < 100:
+             return # Don't draw if close
+        
+        direction = direction.normalize()
+        pointer_pos = pygame.Vector2(player_pos) + direction * 60
+        
+        pygame.draw.circle(screen, self.glow_color, pointer_pos, 5)
+        # Simple triangle pointer
+        p1 = pointer_pos + direction * 10
+        p2 = pointer_pos + direction.rotate(135) * 8
+        p3 = pointer_pos + direction.rotate(-135) * 8
+        pygame.draw.polygon(screen, self.glow_color, [p1, p2, p3])
+
 class TerminalUI:
     @staticmethod
     def draw_box(screen, rect, title):

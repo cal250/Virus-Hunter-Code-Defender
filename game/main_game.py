@@ -114,12 +114,23 @@ def main():
     persistence_created = False
     
     shell = ReverseShell()
+    last_direction = pygame.Vector2(1, 0)
     
     running = True
     win = False
     while running:
         delta_time = clock.tick(60) / 1000.0
         
+        # Track last direction for shooting
+        keys = pygame.key.get_pressed()
+        move = pygame.Vector2(0, 0)
+        if keys[pygame.K_w]: move.y -= 1
+        if keys[pygame.K_s]: move.y += 1
+        if keys[pygame.K_a]: move.x -= 1
+        if keys[pygame.K_d]: move.x += 1
+        if move.length() > 0:
+            last_direction = move.normalize()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -132,19 +143,14 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 if event.key == pygame.K_SPACE:
-                    bullets.add(Bullet(player.pos.x, player.pos.y, pygame.Vector2(1, 0)))
+                    bullets.add(Bullet(player.pos.x, player.pos.y, last_direction))
                 if event.key == pygame.K_e:
                     if level == 1 and scan_terminal.is_near(player):
                         is_scanning = True
-                        mission_text = "Level 1: System Scanning..."
                     elif level == 2 and network_terminal.is_near(player):
                         shell.start()
-                        mission_text = "Level 2: SHELL ACTIVE - Check Listener! (Find Quarantine)"
-                        level = 3
-                        terminals.add(quarantine_terminal)
                     elif level == 3 and quarantine_terminal.is_near(player):
                         persistence_created, path = create_persistence()
-                        mission_text = "Level 3: Malware persistence detected. Clean the system!"
                         level = 4
                         mission_text = "Level 4: Eliminate all viruses to SECURE system!"
 
@@ -152,31 +158,47 @@ def main():
         if win:
             continue
 
-        if level == 1 and is_scanning:
-            if scan_progress < 100:
-                scan_progress += 0.5
+        if level == 1:
+            if is_scanning:
+                if scan_progress < 100:
+                    scan_progress += 0.5
+                    deps = ["pygame", "socket", "threading", "os", "sys"]
+                    curr_dep = deps[int(scan_progress / 20) % len(deps)]
+                    mission_text = f"Level 1: Checking {curr_dep}..."
+                else:
+                    is_scanning = False
+                    level = 2
+                    terminals.add(network_terminal)
+                    mission_text = "Level 1 Complete! Find Network Node terminal."
             else:
-                is_scanning = False
-                level = 2
-                terminals.add(network_terminal)
-                mission_text = "Level 1 Complete! Find Network Node."
+                mission_text = "Level 1: Go to SYSTEM SCANNER and press 'E'"
+        
+        if level == 2:
+            if shell.status == "CONNECTED":
+                mission_text = "Level 2: SHELL ACTIVE! check listener tools/listener.py"
+                level = 3
+                terminals.add(quarantine_terminal)
+            elif "FAILED" in shell.status:
+                mission_text = f"Shell Link Failed: {shell.status}. Restarting link..."
+                shell.start() # Automatic retry 
+            elif shell.status == "CONNECTING...":
+                 mission_text = "Establishing Secure Link to Listener... (Is listener.py running?)"
+            else:
+                 mission_text = "Level 2: Find Network Node and press 'E' to link shell"
         
         if level == 4:
-            if len(enemies) == 0 and not is_scanning: # Final cleanup condition
-                # Wait for some enemies to spawn and then be killed
-                if scan_progress > 100: # Reuse scan_progress as a counter or similar
-                    win = True
-                    mission_text = "SYSTEM SECURED. Press any key to exit."
+            if scan_progress < 200:
+                scan_progress += 0.2
+            
+            if len(enemies) == 0 and scan_progress >= 200: 
+                win = True
+                mission_text = "SYSTEM SECURED. Press any key to exit."
             
             # Spawn some final enemies if level 4
             if len(enemies) < 5:
                 import random
                 if random.random() < 0.01:
                     enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
-            
-            # Use scan_progress to track "Cleanup" in level 4
-            if scan_progress < 200:
-                scan_progress += 0.2
 
         player.update(width, height)
         bullets.update()
@@ -214,7 +236,15 @@ def main():
         enemies.draw(screen)
         bullets.draw(screen)
         player.draw(screen)
-        hud.draw(screen, player, mission_text, min(100, int(scan_progress)))
+        hud.draw(screen, player, mission_text, min(100, int(scan_progress) if level == 1 else (int(scan_progress - 100) if level == 4 else 0)))
+        
+        # Draw pointers to next objective
+        if level == 1:
+            hud.draw_pointer(screen, player.pos, scan_terminal.rect.center)
+        elif level == 2:
+            hud.draw_pointer(screen, player.pos, network_terminal.rect.center)
+        elif level == 3:
+            hud.draw_pointer(screen, player.pos, quarantine_terminal.rect.center)
         
         if win:
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
