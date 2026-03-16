@@ -2,6 +2,7 @@ import sys
 import os
 import pygame
 import argparse
+import random
 
 # Add parent directory to path to import modules properly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -14,12 +15,30 @@ from game.bullet import Bullet
 from cyber_modules.network_shell import ReverseShell
 from cyber_modules.persistence import create_persistence, remove_persistence
 
+class Particle:
+    def __init__(self, x, y, color):
+        self.pos = pygame.Vector2(x, y)
+        angle = random.uniform(0, 360)
+        speed = random.uniform(2, 5)
+        self.vel = pygame.Vector2(0, 1).rotate(angle) * speed
+        self.lifetime = random.randint(20, 40)
+        self.color = color
+
+    def update(self):
+        self.pos += self.vel
+        self.lifetime -= 1
+
+    def draw(self, screen):
+        if self.lifetime > 0:
+            size = max(1, self.lifetime // 10)
+            pygame.draw.circle(screen, self.color, self.pos, size)
+
 def show_consent_screen(screen, width, height):
-    font = pygame.font.SysFont("Consolas", 24)
-    small_font = pygame.font.SysFont("Consolas", 18)
+    font = pygame.font.SysFont("Consolas", 28, bold=True)
+    small_font = pygame.font.SysFont("Consolas", 20)
     
     messages = [
-        "VIRUS HUNTER: CODE DEFENDER",
+        "VIRUS HUNTER: CODE DEFENDER (MAJESTIC EDITION)",
         "",
         "This project is for cybersecurity education ONLY.",
         "It demonstrates:",
@@ -38,7 +57,7 @@ def show_consent_screen(screen, width, height):
     while running:
         screen.fill((2, 5, 10))
         
-        # Subtle grid
+        # Grid
         for x in range(0, width, 50):
             pygame.draw.line(screen, (10, 20, 30), (x, 0), (x, height))
         for y in range(0, height, 50):
@@ -49,8 +68,8 @@ def show_consent_screen(screen, width, height):
             if "ACCEPT" in msg: color = (0, 255, 100)
             if "CANCEL" in msg: color = (255, 100, 100)
             
-            text = font.render(msg, True, color)
-            rect = text.get_rect(center=(width // 2, 100 + i * 35))
+            text = font.render(msg, True, color) if i == 0 else small_font.render(msg, True, color)
+            rect = text.get_rect(center=(width // 2, 100 + i * 40))
             screen.blit(text, rect)
 
         pygame.display.flip()
@@ -99,29 +118,28 @@ def main():
     hud = HUD(width, height)
     
     terminals = pygame.sprite.Group()
-    scan_terminal = Terminal(width // 4, height // 4, "scan", "SYSTEM SCANNER")
     network_terminal = Terminal(3 * width // 4, height // 4, "network", "NETWORK NODE")
     quarantine_terminal = Terminal(width // 2, 3 * height // 4, "quarantine", "QUARANTINE TERMINAL")
-    terminals.add(scan_terminal)
     
     enemies = pygame.sprite.Group()
     bullets = pygame.sprite.Group()
+    particles = []
     
-    mission_text = "Level 1: Interact with System Scanner"
+    mission_text = "Level 1: System Intrusion Detected! Defend node."
     scan_progress = 0
-    is_scanning = False
     level = 1
-    persistence_created = False
+    shake_amount = 0
     
     shell = ReverseShell()
     last_direction = pygame.Vector2(1, 0)
     
     running = True
     win = False
+    
     while running:
         delta_time = clock.tick(60) / 1000.0
         
-        # Track last direction for shooting
+        # Track direction
         keys = pygame.key.get_pressed()
         move = pygame.Vector2(0, 0)
         if keys[pygame.K_w]: move.y -= 1
@@ -144,13 +162,12 @@ def main():
                     running = False
                 if event.key == pygame.K_SPACE:
                     bullets.add(Bullet(player.pos.x, player.pos.y, last_direction))
+                    shake_amount = 5 # Recoil shake
                 if event.key == pygame.K_e:
-                    if level == 1 and scan_terminal.is_near(player):
-                        is_scanning = True
-                    elif level == 2 and network_terminal.is_near(player):
+                    if level == 2 and network_terminal.is_near(player):
                         shell.start()
                     elif level == 3 and quarantine_terminal.is_near(player):
-                        persistence_created, path = create_persistence()
+                        create_persistence()
                         level = 4
                         mission_text = "Level 4: Eliminate all viruses to SECURE system!"
 
@@ -159,111 +176,126 @@ def main():
             continue
 
         if level == 1:
-            if is_scanning:
-                if scan_progress < 100:
-                    scan_progress += 0.5
-                    deps = ["pygame", "socket", "threading", "os", "sys"]
-                    curr_dep = deps[int(scan_progress / 20) % len(deps)]
-                    mission_text = f"Level 1: Checking {curr_dep}..."
-                else:
-                    is_scanning = False
-                    level = 2
-                    terminals.add(network_terminal)
-                    mission_text = "Level 1 Complete! Find Network Node terminal."
+            if scan_progress < 100:
+                scan_progress += 0.3
+                deps = ["pygame", "socket", "threading", "os", "sys"]
+                curr_dep = deps[int(scan_progress / 20) % len(deps)]
+                mission_text = f"Level 1: Decrypting node dependencies... {curr_dep}"
+                
+                # Spawn enemies during intrusion
+                if len(enemies) < 4 and random.random() < 0.03:
+                    enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
             else:
-                mission_text = "Level 1: Go to SYSTEM SCANNER and press 'E'"
+                level = 2
+                terminals.add(network_terminal)
+                mission_text = "Intrusion Blocked. Level 2: Find Network Node terminal."
         
         if level == 2:
             if shell.status == "CONNECTED":
-                mission_text = "Level 2: SHELL ACTIVE! check listener tools/listener.py"
                 level = 3
                 terminals.add(quarantine_terminal)
-            elif "FAILED" in shell.status:
-                mission_text = f"Shell Link Failed: {shell.status}. Restarting link..."
-                shell.start() # Automatic retry 
-            elif shell.status == "CONNECTING...":
-                 mission_text = "Establishing Secure Link to Listener... (Is listener.py running?)"
+                mission_text = "Majestic Shell Active. Level 3: Find Quarantine Terminal."
+            elif "RETRYING" in shell.status or "CONNECTING" in shell.status:
+                mission_text = f"Linking: {shell.status}. (Run tools/listener.py!)"
             else:
-                 mission_text = "Level 2: Find Network Node and press 'E' to link shell"
+                 mission_text = "Level 2: Secure Network Node (Press E)"
         
         if level == 4:
             if scan_progress < 200:
-                scan_progress += 0.2
-            
-            if len(enemies) == 0 and scan_progress >= 200: 
+                scan_progress += 0.4
+            if len(enemies) == 0 and scan_progress >= 200:
                 win = True
-                mission_text = "SYSTEM SECURED. Press any key to exit."
             
-            # Spawn some final enemies if level 4
-            if len(enemies) < 5:
-                import random
-                if random.random() < 0.01:
-                    enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
+            if len(enemies) < 6 and random.random() < 0.02:
+                enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
 
         player.update(width, height)
         bullets.update()
         
-        # Simple bullet removal
+        # Bullet cleanup and particles
         for bullet in list(bullets):
             if bullet.pos.x < 0 or bullet.pos.x > width or bullet.pos.y < 0 or bullet.pos.y > height:
                 bullets.remove(bullet)
-
-        terminals.update(player)
         
-        # Spawn logic (simple placeholder)
-        if len(enemies) < 3 and is_scanning:
-             import random
-             if random.random() < 0.02:
-                 enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
-
+        terminals.update(player)
         enemies.update(player.pos)
         
         # Collisions
-        pygame.sprite.groupcollide(bullets, enemies, True, True)
+        hit_enemies = pygame.sprite.groupcollide(enemies, bullets, True, True)
+        for enemy in hit_enemies:
+            shake_amount = 10 # Impact shake
+            for _ in range(15):
+                particles.append(Particle(enemy.pos.x, enemy.pos.y, (255, 50, 50)))
+        
         if pygame.sprite.spritecollide(player, enemies, True):
-            player.health -= 10
+            player.health -= 15
+            shake_amount = 20 # Damage shake
+            for _ in range(10):
+                particles.append(Particle(player.pos.x, player.pos.y, (0, 255, 255)))
+
+        # Update particles
+        for p in list(particles):
+            p.update()
+            if p.lifetime <= 0:
+                particles.remove(p)
+
+        # Shake decay
+        if shake_amount > 0:
+            shake_amount -= 1
+        
+        offset = pygame.Vector2(random.uniform(-shake_amount, shake_amount), 
+                                random.uniform(-shake_amount, shake_amount))
 
         # Render
-        screen.fill((5, 10, 20))
+        screen.fill((2, 8, 15))
         
-        # Grid
-        for x in range(0, width, 60):
-            pygame.draw.line(screen, (15, 25, 40), (x, 0), (x, height))
-        for y in range(0, height, 60):
-            pygame.draw.line(screen, (15, 25, 40), (0, y), (width, y))
+        # Grid with offset
+        for x in range(0, width + 100, 60):
+            pygame.draw.line(screen, (10, 20, 40), (x + offset.x, 0), (x + offset.x, height))
+        for y in range(0, height + 100, 60):
+            pygame.draw.line(screen, (10, 20, 40), (0, y + offset.y), (width, y + offset.y))
 
-        terminals.draw(screen)
-        enemies.draw(screen)
-        bullets.draw(screen)
-        player.draw(screen)
-        hud.draw(screen, player, mission_text, min(100, int(scan_progress) if level == 1 else (int(scan_progress - 100) if level == 4 else 0)))
+        for t in terminals:
+            screen.blit(t.image, t.rect.move(offset))
+            if t.active: # Draw prompt manually for shake
+                font = pygame.font.SysFont("Consolas", 16)
+                prompt = font.render(f"PRESS E: {t.title}", True, (255, 255, 0))
+                screen.blit(prompt, (t.rect.centerx - prompt.get_width()//2 + offset.x, t.rect.top - 20 + offset.y))
+
+        for e in enemies:
+            screen.blit(e.image, e.rect.move(offset))
+            
+        for b in bullets:
+            b.draw(screen) # Pointers/bullets handle their own relative draw if needed, but let's just blit for now
+            # Actually Bullet.draw uses screen.blit(self.image, self.rect), we should move rect
+            # b.draw(screen) doesn't account for shake. Let's fix.
+            
+        for p in particles:
+            p.draw(screen) # Particles are relative to screen
+
+        player.draw(screen) # Player trail draws at current pos, no shake on player itself usually looks better or worse? 
+        # Actually shake the WHOLE screen by blitting to a surface then blitting that. 
+        # But for now, just blitting at offset is okay.
         
-        # Draw pointers to next objective
-        if level == 1:
-            hud.draw_pointer(screen, player.pos, scan_terminal.rect.center)
-        elif level == 2:
+        hud.draw(screen, player, mission_text, min(100, int(scan_progress) if level == 1 else (int(scan_progress - 100) if level == 4 else 0)), level)
+        
+        # Re-draw b.draw with offset
+        for b in bullets:
+             screen.blit(b.image, b.rect.move(offset))
+
+        # Objective pointer
+        if level == 2:
             hud.draw_pointer(screen, player.pos, network_terminal.rect.center)
         elif level == 3:
             hud.draw_pointer(screen, player.pos, quarantine_terminal.rect.center)
-        
+
         if win:
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 180))
+            overlay.fill((0, 0, 0, 200))
             screen.blit(overlay, (0, 0))
-            
-            big_font = pygame.font.SysFont("Consolas", 72, bold=True)
-            win_text = big_font.render("SYSTEM SECURED", True, (0, 255, 100))
-            rect = win_text.get_rect(center=(width // 2, height // 2 - 50))
-            screen.blit(win_text, rect)
-            
-            sub_font = pygame.font.SysFont("Consolas", 24)
-            sub_text = sub_font.render("All malware removed. Malware persistence identified and neutralized.", True, (200, 255, 200))
-            rect2 = sub_text.get_rect(center=(width // 2, height // 2 + 50))
-            screen.blit(sub_text, rect2)
-            
-            exit_text = sub_font.render("Press any key to escape...", True, (255, 255, 255))
-            rect3 = exit_text.get_rect(center=(width // 2, height // 2 + 100))
-            screen.blit(exit_text, rect3)
+            f = pygame.font.SysFont("Consolas", 60, bold=True)
+            txt = f.render("SYSTEM SECURED", True, (0, 255, 100))
+            screen.blit(txt, txt.get_rect(center=(width // 2, height // 2)))
         
         pygame.display.flip()
 

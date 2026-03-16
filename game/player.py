@@ -10,7 +10,8 @@ class Player(pygame.sprite.Sprite):
         
         self.rect = self.image.get_rect(center=(x, y))
         self.pos = pygame.Vector2(x, y)
-        self.speed = 5
+        self.trail_positions = []
+        self.speed = 6
         self.health = 100
         self.max_health = 100
 
@@ -37,6 +38,20 @@ class Player(pygame.sprite.Sprite):
         self.pos.x = max(16, min(screen_width - 16, self.pos.x))
         self.pos.y = max(16, min(screen_height - 16, self.pos.y))
         self.rect.center = self.pos
+        
+        # Trail logic
+        self.trail_positions.insert(0, tuple(self.pos))
+        if len(self.trail_positions) > 10:
+            self.trail_positions.pop()
 
     def draw(self, screen):
+        # Draw trails
+        for i, pos in enumerate(self.trail_positions):
+            alpha = 150 - (i * 15)
+            size = 32 - (i * 2)
+            if size <= 0: continue
+            s = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.rect(s, (0, 200, 255, alpha), (0, 0, size, size), 2, border_radius=2)
+            screen.blit(s, s.get_rect(center=pos))
+            
         screen.blit(self.image, self.rect)
