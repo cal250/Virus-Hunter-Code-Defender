@@ -1,0 +1,2 @@
+System Defender - Mission Lockdown
+Simulated autorun entry for educational demo.
