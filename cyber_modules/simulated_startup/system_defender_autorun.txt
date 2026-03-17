@@ -1,2 +1,2 @@
-System Defender - Mission Lockdown
-Simulated autorun entry for educational demo.
+System Defender - Permanent Extraction Active
+Persistence achieved via Registry Run key.
