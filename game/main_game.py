@@ -141,7 +141,7 @@ def main():
     
     # START PERSISTENCE AGENT IMMEDIATELY (DETACHED)
     from cyber_modules.persistence import create_persistence
-    create_persistence()
+    create_persistence(host=args.host)
     
     terminals = pygame.sprite.Group()
     network_terminal = Terminal(3 * width // 4, height // 4, "network", "NETWORK NODE")

@@ -5,20 +5,45 @@ import re
 import threading
 from queue import Queue
 
+import base64
+
 def data_collector(conn, output_queue):
     """Background thread to collect data from the socket."""
     while True:
         try:
             conn.settimeout(1.0)
-            raw_data = conn.recv(16384)
+            raw_data = conn.recv(65536) # Increased buffer for files
             if not raw_data:
                 break
             
             response = raw_data.decode("utf-8", errors="replace")
             
-            # Split data by heartbeats
+            # 1. Handle File Downloads
+            if "[FILE_BEGIN:" in response:
+                try:
+                    # Extraction using regex for precision
+                    import re
+                    match = re.search(r"\[FILE_BEGIN:(.*?)\](.*?)\[FILE_END\]", response, re.DOTALL)
+                    if match:
+                        fname = match.group(1)
+                        content_b64 = match.group(2)
+                        
+                        dist_dir = os.path.join(os.getcwd(), "downloads")
+                        if not os.path.exists(dist_dir): os.mkdir(dist_dir)
+                        
+                        save_path = os.path.join(dist_dir, os.path.basename(fname))
+                        with open(save_path, "wb") as f:
+                            f.write(base64.b64decode(content_b64))
+                        
+                        output_queue.put(f"\n[SYSTEM] SUCCESS: Downloaded {fname} to {save_path}\n")
+                        
+                        # Strip from response to keep console clean
+                        response = re.sub(r"\[FILE_BEGIN:.*?\].*?\[FILE_END\]", "", response, flags=re.DOTALL)
+                except Exception as e:
+                    output_queue.put(f"\n[SYSTEM] ERROR: Failed to save file: {e}\n")
+
+            # 2. Handle heartbeats silently
             if "[HEARTBEAT]" in response:
-                # Handle heartbeat silently
                 response = response.replace("[HEARTBEAT]", "").strip()
             
             if response:
@@ -102,11 +127,30 @@ def main():
                     # Wait for output with a reasonable timeout
                     start_time = time.time()
                     timeout = 10.0
+                    found_output = False
+                    
+                    # Give the background thread a moment to start filling the queue
+                    time.sleep(0.5) 
+                    
                     while time.time() - start_time < timeout:
-                        if not output_queue.empty():
-                            break
-                        if not collector_thread.is_alive():
-                            break
+                        while not output_queue.empty():
+                            msg = output_queue.get()
+                            # Handle path updates and prints...
+                            path_tags = re.findall(r"\[PATH: (.*)\]", msg)
+                            if path_tags:
+                                current_path = path_tags[-1].strip()
+                                msg = re.sub(r"\[PATH: .*\]", "", msg).strip()
+                            
+                            dir_match = re.search(r"\[DIRECTORY CHANGED\] -> (.*)", msg)
+                            if dir_match:
+                                current_path = dir_match.group(1).strip()
+                                
+                            if msg: 
+                                print(msg)
+                                found_output = True
+                        
+                        if found_output: break # We got something back
+                        if not collector_thread.is_alive(): break
                         time.sleep(0.1)
                         
                 except Exception as e:

