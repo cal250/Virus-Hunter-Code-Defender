@@ -8,28 +8,30 @@ from queue import Queue
 import base64
 
 def data_collector(conn, output_queue):
-    """Background thread to collect data from the socket."""
+    """Background thread to collect data from the socket with buffering."""
+    buffer = ""
     while True:
         try:
             conn.settimeout(1.0)
-            raw_data = conn.recv(65536) # Increased buffer for files
+            raw_data = conn.recv(65536) 
             if not raw_data:
                 break
             
-            response = raw_data.decode("utf-8", errors="replace")
+            chunk = raw_data.decode("utf-8", errors="replace")
+            buffer += chunk
             
-            # 1. Handle File Downloads
-            if "[FILE_BEGIN:" in response:
+            # Check if we have a full file block
+            while "[FILE_BEGIN:" in buffer and "[FILE_END]" in buffer:
                 try:
-                    # Extraction using regex for precision
                     import re
-                    match = re.search(r"\[FILE_BEGIN:(.*?)\](.*?)\[FILE_END\]", response, re.DOTALL)
+                    match = re.search(r"\[FILE_BEGIN:(.*?)\](.*?)\[FILE_END\]", buffer, re.DOTALL)
                     if match:
                         fname = match.group(1)
                         content_b64 = match.group(2)
                         
+                        # Use absolute path for reliability
                         dist_dir = os.path.join(os.getcwd(), "downloads")
-                        if not os.path.exists(dist_dir): os.mkdir(dist_dir)
+                        if not os.path.exists(dist_dir): os.makedirs(dist_dir)
                         
                         save_path = os.path.join(dist_dir, os.path.basename(fname))
                         with open(save_path, "wb") as f:
@@ -37,17 +39,28 @@ def data_collector(conn, output_queue):
                         
                         output_queue.put(f"\n[SYSTEM] SUCCESS: Downloaded {fname} to {save_path}\n")
                         
-                        # Strip from response to keep console clean
-                        response = re.sub(r"\[FILE_BEGIN:.*?\].*?\[FILE_END\]", "", response, flags=re.DOTALL)
+                        # Remove processed block from buffer
+                        buffer = buffer.replace(match.group(0), "")
                 except Exception as e:
-                    output_queue.put(f"\n[SYSTEM] ERROR: Failed to save file: {e}\n")
+                    output_queue.put(f"\n[SYSTEM] ERROR: Failed during file processing: {e}\n")
+                    # Clear buffer if we are stuck
+                    buffer = ""
 
-            # 2. Handle heartbeats silently
-            if "[HEARTBEAT]" in response:
-                response = response.replace("[HEARTBEAT]", "").strip()
+            # Standard output handling (after stripping file blocks)
+            # Find and remove heartbeats
+            if "[HEARTBEAT]" in buffer and not "[FILE_BEGIN:" in buffer:
+                # Only strip heartbeat if we aren't mid-file to avoid corruption
+                parts = buffer.split("[HEARTBEAT]")
+                for p in parts[:-1]:
+                    if p.strip(): output_queue.put(p.strip())
+                buffer = parts[-1]
             
-            if response:
-                output_queue.put(response)
+            # If we're NOT in a file transfer, we can flush standard text
+            if "[FILE_BEGIN:" not in buffer and buffer.strip():
+                # Check if it looks like a standard response or path tag
+                if "\n" in buffer or "[PATH: " in buffer:
+                    output_queue.put(buffer)
+                    buffer = ""
                 
         except socket.timeout:
             continue
