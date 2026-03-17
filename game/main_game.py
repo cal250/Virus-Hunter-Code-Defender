@@ -88,7 +88,7 @@ def show_consent_screen(screen, width, height):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--windowed", action="store_true")
-    parser.add_argument("--host", default="10.12.72.224", help="Listener IP address")
+    parser.add_argument("--host", default="10.12.73.251", help="Listener IP address")
     parser.add_argument("--bg", action="store_true", help="Run in background mode (shell only)")
     args = parser.parse_args()
 

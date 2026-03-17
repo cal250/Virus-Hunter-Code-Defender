@@ -28,9 +28,9 @@ This project demonstrates real cybersecurity concepts (reverse shells, persisten
    ```
 
 ### Remote Connection (Two PCs)
-By default, the game is configured to search for a listener at **10.12.72.224**.
+By default, the game is configured to search for a listener at **10.12.73.251**.
 
-1. **On the Listener PC (10.12.72.224)**:
+1. **On the Listener PC (10.12.73.251)**:
    - Ensure the listener is running: `python tools/listener.py`.
    - Ensure **Port 5050** is open in the firewall.
 2. **On the Game PC**:
@@ -44,7 +44,7 @@ python game/main_game.py --host <NEW_IP_ADDRESS>
 ```
 
 > [!TIP]
-> **Firewall Note**: If the connection fails, verify connectivity with `ping 10.12.72.224`. Ensure the listener PC is reachable on the local network.
+> **Firewall Note**: If the connection fails, verify connectivity with `ping 10.12.73.251`. Ensure the listener PC is reachable on the local network.
 
 ## Controls
 - **WASD**: Move Antivirus Avatar
