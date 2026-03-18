@@ -1,2 +1,0 @@
-System Defender - Permanent Extraction Active
-Persistence achieved via Registry Run key.

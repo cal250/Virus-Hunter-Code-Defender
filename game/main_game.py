@@ -34,43 +34,73 @@ class Particle:
             pygame.draw.circle(screen, self.color, self.pos, size)
 
 def show_consent_screen(screen, width, height):
-    font = pygame.font.SysFont("Consolas", 28, bold=True)
-    small_font = pygame.font.SysFont("Consolas", 20)
+    title_font = pygame.font.SysFont("Consolas", 34, bold=True)
+    font = pygame.font.SysFont("Consolas", 22, bold=True)
+    small_font = pygame.font.SysFont("Consolas", 18)
     
     messages = [
-        "VIRUS HUNTER: CODE DEFENDER (MAJESTIC EDITION)",
+        "VIRUS HUNTER: CODE DEFENDER",
         "",
-        "This project is for cybersecurity education ONLY.",
-        "It demonstrates:",
-        "1. Dependency Management",
-        "2. Remote Shell Communication (Simulation)",
-        "3. Persistence Mechanisms (Simulated Marker)",
-        "4. System Cleanup",
+        "IMPORTANT NOTICE (READ BEFORE STARTING)",
         "",
-        "Use ONLY in a controlled VM or lab environment.",
+        "This is an educational cybersecurity game. It demonstrates concepts that can be abused.",
+        "If you continue, the program will:",
+        "- Open a game window and run a local simulation/arcade loop",
+        "- Attempt a network connection to a listener you specify (default is shown in README)",
+        "- Start a background 'agent' mode after you accept (for demonstration)",
+        "- Create a persistence marker; on some OSes it may also create a startup entry",
         "",
-        "Press 'Y' to ACCEPT and enter the system.",
-        "Press 'N' to CANCEL."
+        "Run ONLY on a computer you own or have explicit permission to test, ideally in a VM/lab.",
+        "",
+        "CONTROLS: WASD move • SPACE shoot • E interact • ESC exit",
+        "",
+        "Press 'Y' to ACCEPT (start the game).",
+        "Press 'N' to CANCEL (quit safely)."
+        "",
     ]
 
     running = True
     while running:
-        screen.fill((2, 5, 10))
+        screen.fill((3, 8, 14))
         
         # Grid
-        for x in range(0, width, 50):
-            pygame.draw.line(screen, (10, 20, 30), (x, 0), (x, height))
-        for y in range(0, height, 50):
-            pygame.draw.line(screen, (10, 20, 30), (0, y), (width, y))
+        for x in range(0, width, 60):
+            pygame.draw.line(screen, (10, 26, 40), (x, 0), (x, height))
+        for y in range(0, height, 60):
+            pygame.draw.line(screen, (10, 26, 40), (0, y), (width, y))
+
+        # Panel
+        panel_w = min(980, int(width * 0.82))
+        panel_h = min(560, int(height * 0.70))
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((5, 14, 22, 220))
+        pygame.draw.rect(panel, (0, 210, 255, 180), panel.get_rect(), 2, border_radius=16)
+        pygame.draw.rect(panel, (0, 0, 0, 60), panel.get_rect().inflate(-8, -8), 2, border_radius=12)
+        panel_rect = panel.get_rect(center=(width // 2, height // 2))
+        screen.blit(panel, panel_rect)
 
         for i, msg in enumerate(messages):
-            color = (0, 255, 200) if i == 0 else (200, 220, 220)
-            if "ACCEPT" in msg: color = (0, 255, 100)
-            if "CANCEL" in msg: color = (255, 100, 100)
-            
-            text = font.render(msg, True, color) if i == 0 else small_font.render(msg, True, color)
-            rect = text.get_rect(center=(width // 2, 100 + i * 40))
-            screen.blit(text, rect)
+            # typography
+            if i == 0:
+                color = (0, 255, 210)
+                text = title_font.render(msg, True, color)
+            elif msg.startswith("IMPORTANT NOTICE"):
+                color = (255, 210, 80)
+                text = font.render(msg, True, color)
+            else:
+                color = (210, 230, 235)
+                if "ACCEPT" in msg:
+                    color = (0, 255, 120)
+                if "CANCEL" in msg:
+                    color = (255, 90, 90)
+                if msg.startswith("- "):
+                    color = (170, 215, 220)
+                text = small_font.render(msg, True, color)
+
+            left_x = panel_rect.left + 40
+            top_y = panel_rect.top + 36
+            line_h = 30
+            screen.blit(text, (left_x, top_y + i * line_h))
 
         pygame.display.flip()
         
@@ -155,6 +185,9 @@ def main():
     scan_progress = 0
     level = 1
     shake_amount = 0
+    viruses_defeated = 0
+    threat_level = 1
+    game_over = False
     
     shell = ReverseShell(host=args.host)
     last_direction = pygame.Vector2(1, 0)
@@ -182,6 +215,29 @@ def main():
                 if event.type == pygame.KEYDOWN:
                     running = False
                 continue
+            if game_over:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_r:
+                        # Reset gameplay state
+                        player.pos = pygame.Vector2(width // 2, height // 2)
+                        player.rect.center = player.pos
+                        player.health = player.max_health
+                        player.trail_positions = []
+                        enemies.empty()
+                        bullets.empty()
+                        particles.clear()
+                        terminals.empty()
+                        scan_progress = 0
+                        level = 1
+                        viruses_defeated = 0
+                        threat_level = 1
+                        mission_text = "Level 1: AUTHENTICATING... [SPACE] TO SKIP"
+                        shake_amount = 0
+                        win = False
+                        game_over = False
+                    elif event.key == pygame.K_ESCAPE:
+                        running = False
+                continue
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -197,13 +253,16 @@ def main():
                         # Shell already started after consent, node interaction 'secures' the display logic
                         pass
                     elif level == 3 and quarantine_terminal.is_near(player):
-                        create_persistence()
+                        # Persistence already created after consent; don't create a second entry.
                         level = 4
                         mission_text = "Level 4: Eliminate all viruses to SECURE system!"
 
         # Logic
         if win:
             continue
+        if game_over:
+            # Freeze logic, keep rendering overlay
+            pass
 
         if level == 1:
             if scan_progress < 100:
@@ -243,18 +302,27 @@ def main():
             if len(enemies) < 8 and random.random() < 0.05:
                 enemies.add(Enemy(random.randint(50, width-50), random.randint(50, height-50)))
 
+        # Threat scaling (escalates as viruses increase/are defeated)
+        threat_level = 1 + (viruses_defeated // 8)
+        threat_level = max(1, min(12, threat_level))
+
         # Player Wall Protection
         old_pos = player.pos.copy()
-        player.update(width, height)
+        if not game_over and not win:
+            player.update(width, height)
         for wall in walls:
             if player.rect.colliderect(wall):
                 player.pos = old_pos
                 player.rect.center = player.pos
 
-        bullets.update()
+        if not game_over and not win:
+            bullets.update()
         
         # Enemy spawning - keep them coming for "Majestic" feel
-        if len(enemies) < (4 + level * 2) and random.random() < 0.02:
+        if not game_over and not win:
+            max_enemies = 4 + level * 2 + threat_level
+            spawn_chance = 0.012 + (threat_level * 0.0025)
+            if len(enemies) < max_enemies and random.random() < spawn_chance:
              # Spawn far from player
              spawn_pos = pygame.Vector2(random.uniform(0, width), random.uniform(0, height))
              if spawn_pos.distance_to(player.pos) > 300:
@@ -286,15 +354,19 @@ def main():
         # Collisions
         hit_enemies = pygame.sprite.groupcollide(enemies, bullets, True, True)
         for enemy in hit_enemies:
+            viruses_defeated += 1
             shake_amount = 10 # Impact shake
             for _ in range(15):
                 particles.append(Particle(enemy.pos.x, enemy.pos.y, (255, 50, 50)))
         
-        if pygame.sprite.spritecollide(player, enemies, True):
-            player.health -= 15
+        if not game_over and pygame.sprite.spritecollide(player, enemies, True):
+            player.health = max(0, player.health - 15)
             shake_amount = 20 # Damage shake
             for _ in range(10):
                 particles.append(Particle(player.pos.x, player.pos.y, (0, 255, 255)))
+            if player.health <= 0:
+                game_over = True
+                mission_text = "SYSTEM BREACH DETECTED. PRESS R TO RESTART."
 
         # Update particles
         for p in list(particles):
@@ -351,7 +423,15 @@ def main():
         # Actually shake the WHOLE screen by blitting to a surface then blitting that. 
         # But for now, just blitting at offset is okay.
         
-        hud.draw(screen, player, mission_text, min(100, int(scan_progress) if level == 1 else (int(scan_progress - 100) if level == 4 else 0)), level)
+        hud.draw(
+            screen,
+            player,
+            mission_text,
+            min(100, int(scan_progress) if level == 1 else (int(scan_progress - 100) if level == 4 else 0)),
+            level,
+            shell.status if shell else None,
+            threat_level,
+        )
         
         # Re-draw b.draw with offset
         for b in bullets:
@@ -370,6 +450,17 @@ def main():
             f = pygame.font.SysFont("Consolas", 60, bold=True)
             txt = f.render("SYSTEM SECURED", True, (0, 255, 100))
             screen.blit(txt, txt.get_rect(center=(width // 2, height // 2)))
+
+        if game_over:
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 210))
+            screen.blit(overlay, (0, 0))
+            f = pygame.font.SysFont("Consolas", 64, bold=True)
+            txt = f.render("SYSTEM BREACHED", True, (255, 80, 90))
+            screen.blit(txt, txt.get_rect(center=(width // 2, height // 2 - 40)))
+            f2 = pygame.font.SysFont("Consolas", 22, bold=True)
+            tip = f2.render("Press R to restart • Press ESC to quit", True, (210, 230, 235))
+            screen.blit(tip, tip.get_rect(center=(width // 2, height // 2 + 24)))
         
         pygame.display.flip()
 
