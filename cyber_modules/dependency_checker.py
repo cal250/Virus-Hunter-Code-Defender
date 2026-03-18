@@ -11,6 +11,11 @@ import subprocess
 import sys
 from typing import Iterable
 
+_MODULE_TO_PIP_PACKAGE = {
+    # On many platforms (especially newer Python versions), pygame-ce is the reliable wheel,
+    # but it still imports as `pygame`.
+    "pygame": "pygame-ce",
+}
 
 def _is_installed(module_name: str) -> bool:
     try:
@@ -23,7 +28,7 @@ def _is_installed(module_name: str) -> bool:
 def _install_package(package: str) -> bool:
     """Attempt to install a package via pip. Returns True on success."""
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package])
         return True
     except Exception:
         return False
@@ -41,11 +46,12 @@ def ensure_dependencies(packages: Iterable[str]) -> None:
         return
 
     print("[Dependency Checker] Missing packages:", ", ".join(missing))
-    for pkg in missing:
-        print(f"[Dependency Checker] Installing {pkg}...")
-        ok = _install_package(pkg)
+    for module_name in missing:
+        pip_pkg = _MODULE_TO_PIP_PACKAGE.get(module_name, module_name)
+        print(f"[Dependency Checker] Installing {pip_pkg} (for import '{module_name}')...")
+        ok = _install_package(pip_pkg)
         if not ok:
             raise RuntimeError(
-                f"Failed to install {pkg}. Please run: {sys.executable} -m pip install {pkg}"
+                f"Failed to install {pip_pkg}. Please run: {sys.executable} -m pip install {pip_pkg}"
             )
 
