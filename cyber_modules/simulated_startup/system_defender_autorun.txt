@@ -1,0 +1,2 @@
+Persistence active on darwin
+Target: "/Users/hopeesther/Downloads/Virus-Hunter-Code-Defender/venv/bin/python" "/Users/hopeesther/Downloads/Virus-Hunter-Code-Defender/game/main_game.py" --bg --host 10.12.73.251
